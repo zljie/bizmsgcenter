@@ -15,10 +15,16 @@
     <main>
       <router-view />
     </main>
+    <button class="floater" @click="show = true">流程图</button>
+    <TechDrawer v-if="show" @close="show = false" />
   </div>
 </template>
 
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { ref } from 'vue'
+import TechDrawer from './components/TechDrawer.vue'
+const show = ref(false)
+</script>
 
 <style>
 body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
@@ -34,4 +40,5 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Robo
 .input { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+.floater { position: fixed; right: 14px; bottom: 18px; z-index: 40; background: #0ea5e9; border-radius: 9999px; padding: 10px 14px; color: #fff; border: none; box-shadow: 0 6px 14px rgba(2,132,199,0.35); }
 </style>
