@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { store } from '../store'
 import { labelMessageStatus } from '../labels'
 const topic = ref(store.topics[0]?.name || '')
@@ -76,6 +76,7 @@ const timestamp = ref(new Date().toISOString())
 const dataStr = ref('{"amount":10}')
 const paramValues = ref<Record<string, any>>({})
 const paramDefs = computed(() => store.topics.find(t => t.name === topic.value)?.params || [])
+watch(paramDefs, () => { paramValues.value = {} })
 function publish() {
   if (!topic.value || !eventType.value || !businessId.value) return
   let data

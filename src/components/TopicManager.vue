@@ -1,6 +1,6 @@
 <template>
   <div class="card">
-    <h2>Topic定义</h2>
+    <h2>消息主题定义</h2>
     <div class="row">
       <div class="col">
         <label>名称</label>
