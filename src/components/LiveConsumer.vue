@@ -5,7 +5,7 @@
       <div class="col">
         <label>选择消费者</label>
         <select v-model="cid" class="input">
-          <option v-for="c in actives" :key="c.id" :value="c.id">{{ c.serviceName }} ({{ c.consumerType }})</option>
+          <option v-for="s in actives" :key="s.id" :value="s.id">{{ s.serviceName }} ({{ s.consumerType }})</option>
         </select>
       </div>
     </div>
@@ -13,10 +13,10 @@
   <div class="card">
     <h3>消息流</h3>
     <table class="table">
-      <thead><tr><th>消费者服务</th><th>流水ID</th><th>主题</th><th>事件类型</th><th>业务编号</th><th>到达时间</th></tr></thead>
+      <thead><tr><th>订阅服务</th><th>流水ID</th><th>主题</th><th>事件类型</th><th>业务编号</th><th>到达时间</th></tr></thead>
       <tbody>
         <tr v-for="i in feed" :key="i.deliveredAt + i.message.id">
-          <td>{{ nameMap[i.consumerId] }}</td>
+          <td>{{ nameMap[i.subscriptionId] }}</td>
           <td>{{ i.message.tranId }}</td>
           <td>{{ i.message.topic }}</td>
           <td>{{ i.message.eventType }}</td>
@@ -32,7 +32,7 @@
 import { computed, ref } from 'vue'
 import { store } from '../store'
 const cid = ref('')
-const actives = computed(() => store.consumers.filter(c => c.isActive))
-const feed = computed(() => store.inboxes.filter(i => !cid.value || i.consumerId === cid.value))
-const nameMap = computed(() => Object.fromEntries(store.consumers.map(c => [c.id, c.serviceName])))
+const actives = computed(() => store.subscriptions.filter(s => s.isActive))
+const feed = computed(() => store.inboxes.filter(i => !cid.value || i.subscriptionId === cid.value))
+const nameMap = computed(() => Object.fromEntries(store.subscriptions.map(s => [s.id, s.serviceName])))
 </script>

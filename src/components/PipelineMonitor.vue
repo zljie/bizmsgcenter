@@ -12,7 +12,7 @@
         <div class="card"><strong>记录数</strong><div>{{ store.records.length }}</div></div>
       </div>
       <div class="col">
-        <div class="card"><strong>消费者数</strong><div>{{ store.consumers.length }}</div></div>
+        <div class="card"><strong>订阅数</strong><div>{{ store.subscriptions.length }}</div></div>
       </div>
     </div>
   </div>

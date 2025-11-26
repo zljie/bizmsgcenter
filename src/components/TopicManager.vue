@@ -14,6 +14,41 @@
         <button class="btn" @click="add">新增</button>
       </div>
     </div>
+    <div class="row" style="margin-top:12px;">
+      <div class="col">
+        <label>参数名</label>
+        <input v-model="paramName" class="input" placeholder="如 vessel" />
+      </div>
+      <div class="col">
+        <label>类型</label>
+        <select v-model="paramType" class="input">
+          <option value="string">string</option>
+          <option value="number">number</option>
+          <option value="boolean">boolean</option>
+          <option value="object">object</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>必填</label>
+        <select v-model="paramRequired" class="input"><option :value="true">是</option><option :value="false">否</option></select>
+      </div>
+      <div>
+        <button class="btn gray" @click="addParam">添加参数</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>当前待添加的参数</h3>
+      <table class="table">
+        <thead><tr><th>参数名</th><th>类型</th><th>必填</th></tr></thead>
+        <tbody>
+          <tr v-for="p in params" :key="p.name">
+            <td>{{ p.name }}</td>
+            <td>{{ p.type }}</td>
+            <td>{{ p.required ? '是' : '否' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
   <div class="card">
     <h3>已定义</h3>
@@ -35,10 +70,22 @@ import { ref } from 'vue'
 import { store } from '../store'
 const name = ref('')
 const description = ref('')
+const paramName = ref('')
+const paramType = ref('string')
+const paramRequired = ref(true)
+const params = ref<{name:string;type:string;required:boolean}[]>([])
 function add() {
   if (!name.value.trim()) return
-  store.addTopic(name.value.trim(), description.value.trim())
+  store.addTopic(name.value.trim(), description.value.trim(), params.value.slice())
   name.value = ''
   description.value = ''
+  params.value = []
+}
+function addParam() {
+  if (!paramName.value.trim()) return
+  params.value.push({ name: paramName.value.trim(), type: paramType.value, required: paramRequired.value })
+  paramName.value = ''
+  paramType.value = 'string'
+  paramRequired.value = true
 }
 </script>

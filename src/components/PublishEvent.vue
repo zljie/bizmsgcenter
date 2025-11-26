@@ -26,9 +26,21 @@
         <label>时间戳</label>
         <input v-model="timestamp" class="input" />
       </div>
-      <div class="col">
+      <div class="col" v-if="paramDefs.length === 0">
         <label>数据(JSON)</label>
         <textarea v-model="dataStr" class="input" rows="6" placeholder='{ "amount": 10 }'></textarea>
+      </div>
+    </div>
+    <div v-if="paramDefs.length > 0" class="card">
+      <h3>参数填写</h3>
+      <div class="row" v-for="p in paramDefs" :key="p.name">
+        <div class="col"><label>{{ p.name }} ({{ p.type }})</label>
+          <input v-if="p.type !== 'boolean'" :type="p.type==='number'?'number':'text'" class="input" v-model="paramValues[p.name]" />
+          <select v-else class="input" v-model="paramValues[p.name]">
+            <option :value="true">true</option>
+            <option :value="false">false</option>
+          </select>
+        </div>
       </div>
     </div>
     <div>
@@ -62,10 +74,23 @@ const eventType = ref('CREATE')
 const businessId = ref('')
 const timestamp = ref(new Date().toISOString())
 const dataStr = ref('{"amount":10}')
+const paramValues = ref<Record<string, any>>({})
+const paramDefs = computed(() => store.topics.find(t => t.name === topic.value)?.params || [])
 function publish() {
   if (!topic.value || !eventType.value || !businessId.value) return
   let data
-  try { data = JSON.parse(dataStr.value || '{}') } catch { return }
+  if (paramDefs.value.length > 0) {
+    data = {}
+    for (const p of paramDefs.value) {
+      const v = paramValues.value[p.name]
+      if (p.required && (v === undefined || v === '')) return
+      if (p.type === 'number') data[p.name] = Number(v)
+      else if (p.type === 'boolean') data[p.name] = !!v
+      else data[p.name] = v
+    }
+  } else {
+    try { data = JSON.parse(dataStr.value || '{}') } catch { return }
+  }
   store.persistMessage({ topic: topic.value, eventType: eventType.value, businessId: businessId.value, timestamp: timestamp.value, data })
 }
 </script>

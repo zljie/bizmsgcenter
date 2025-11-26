@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { Topic, EventMessage, Consumer, ConsumerType, DistributionRecord } from './types'
+import type { Topic, EventMessage, Subscription, ConsumerType, DistributionRecord, ParamDef } from './types'
 
 function genId(prefix: string) {
   const r = Math.random().toString(36).slice(2, 8)
@@ -16,7 +16,7 @@ function todayKey(ts?: number) {
 }
 
 interface InboxItem {
-  consumerId: string
+  subscriptionId: string
   message: EventMessage
   deliveredAt: string
 }
@@ -31,20 +31,20 @@ const initialTopics: Topic[] = [
 export const store = reactive({
   topics: initialTopics as Topic[],
   messages: [] as EventMessage[],
-  consumers: [] as Consumer[],
+  subscriptions: [] as Subscription[],
   records: [] as DistributionRecord[],
   inboxes: [] as InboxItem[],
-  batchBuckets: {} as Record<string, { consumerId: string; messages: EventMessage[] }[]>,
-  dedupBuckets: {} as Record<string, { consumerId: string; keys: Set<string>; messages: EventMessage[] }[]>,
-  addTopic(name: string, description?: string) {
+  batchBuckets: {} as Record<string, { subscriptionId: string; messages: EventMessage[] }[]>,
+  dedupBuckets: {} as Record<string, { subscriptionId: string; keys: Set<string>; messages: EventMessage[] }[]>,
+  addTopic(name: string, description?: string, params?: ParamDef[]) {
     const exists = this.topics.some(t => t.name === name)
     if (exists) return
-    this.topics.push({ id: genId('topic'), name, description })
+    this.topics.push({ id: genId('topic'), name, description, params })
   },
-  registerConsumer(payload: Omit<Consumer, 'id' | 'isActive'> & { isActive?: boolean }) {
-    const c: Consumer = { id: genId('consumer'), isActive: payload.isActive ?? true, ...payload }
-    this.consumers.push(c)
-    return c
+  registerSubscription(payload: Omit<Subscription, 'id' | 'isActive'> & { isActive?: boolean }) {
+    const s: Subscription = { id: genId('sub'), isActive: payload.isActive ?? true, ...payload }
+    this.subscriptions.push(s)
+    return s
   },
   persistMessage(input: Omit<EventMessage, 'id' | 'tranId' | 'status' | 'dateKey'>) {
     const tranId = genId('tran')
@@ -60,35 +60,35 @@ export const store = reactive({
     return msg
   },
   enqueueForDistribution(msg: EventMessage) {
-    const targets = this.consumers.filter(c => c.isActive && c.topics.includes(msg.topic))
-    targets.forEach(c => {
+    const targets = this.subscriptions.filter(s => s.isActive && s.topic === msg.topic)
+    targets.forEach(s => {
       const rec: DistributionRecord = {
         id: genId('rec'),
         messageId: msg.id,
-        consumerId: c.id,
-        consumerType: c.consumerType,
-        status: c.consumerType === 'REALTIME' ? 'QUEUED' : 'PENDING',
+        subscriptionId: s.id,
+        subscriptionType: s.consumerType,
+        status: s.consumerType === 'REALTIME' ? 'QUEUED' : 'PENDING',
       }
       this.records.push(rec)
-      if (c.consumerType === 'REALTIME') this.deliver(c, msg, rec)
-      if (c.consumerType === 'DAILY_BATCH') this.addToBatch(c.id, msg)
-      if (c.consumerType === 'DAILY_DEDUP') this.addToDedup(c.id, msg)
+      if (s.consumerType === 'REALTIME') this.deliver(s, msg, rec)
+      if (s.consumerType === 'DAILY_BATCH') this.addToBatch(s.id, msg)
+      if (s.consumerType === 'DAILY_DEDUP') this.addToDedup(s.id, msg)
     })
     msg.status = 'QUEUED'
   },
-  addToBatch(consumerId: string, msg: EventMessage) {
+  addToBatch(subscriptionId: string, msg: EventMessage) {
     const key = msg.dateKey
     if (!this.batchBuckets[key]) this.batchBuckets[key] = []
-    const bucket = this.batchBuckets[key].find(b => b.consumerId === consumerId)
+    const bucket = this.batchBuckets[key].find(b => b.subscriptionId === subscriptionId)
     if (bucket) bucket.messages.push(msg)
-    else this.batchBuckets[key].push({ consumerId, messages: [msg] })
+    else this.batchBuckets[key].push({ subscriptionId, messages: [msg] })
   },
-  addToDedup(consumerId: string, msg: EventMessage) {
+  addToDedup(subscriptionId: string, msg: EventMessage) {
     const key = msg.dateKey
     if (!this.dedupBuckets[key]) this.dedupBuckets[key] = []
-    let bucket = this.dedupBuckets[key].find(b => b.consumerId === consumerId)
+    let bucket = this.dedupBuckets[key].find(b => b.subscriptionId === subscriptionId)
     if (!bucket) {
-      bucket = { consumerId, keys: new Set<string>(), messages: [] }
+      bucket = { subscriptionId, keys: new Set<string>(), messages: [] }
       this.dedupBuckets[key].push(bucket)
     }
     const k = `${msg.topic}-${msg.businessId}-${msg.eventType}`
@@ -102,29 +102,43 @@ export const store = reactive({
     const batch = this.batchBuckets[key] || []
     batch.forEach(b => {
       b.messages.forEach(m => {
-        const rec = this.records.find(r => r.messageId === m.id && r.consumerId === b.consumerId)
+        const rec = this.records.find(r => r.messageId === m.id && r.subscriptionId === b.subscriptionId)
         if (rec && rec.status !== 'SUCCESS') {
-          const c = this.consumers.find(x => x.id === b.consumerId)
-          if (c) this.deliver(c, m, rec)
+          const s = this.subscriptions.find(x => x.id === b.subscriptionId)
+          if (s) this.deliver(s, m, rec)
         }
       })
     })
     const dedup = this.dedupBuckets[key] || []
     dedup.forEach(b => {
       b.messages.forEach(m => {
-        const rec = this.records.find(r => r.messageId === m.id && r.consumerId === b.consumerId)
+        const rec = this.records.find(r => r.messageId === m.id && r.subscriptionId === b.subscriptionId)
         if (rec && rec.status !== 'SUCCESS') {
-          const c = this.consumers.find(x => x.id === b.consumerId)
-          if (c) this.deliver(c, m, rec)
+          const s = this.subscriptions.find(x => x.id === b.subscriptionId)
+          if (s) this.deliver(s, m, rec)
         }
       })
     })
   },
-  deliver(c: Consumer, msg: EventMessage, rec: DistributionRecord) {
+  deliver(s: Subscription, msg: EventMessage, rec: DistributionRecord) {
     const now = new Date().toISOString()
-    this.inboxes.unshift({ consumerId: c.id, message: msg, deliveredAt: now })
-    rec.status = 'SUCCESS'
+    let attempts = 0
+    const max = s.maxRetries ?? 0
+    const enabled = s.retryEnabled ?? false
+    const rate = s.failureRate ?? 0
+    function tryOnce() {
+      attempts += 1
+      const failed = Math.random() < rate
+      return !failed
+    }
+    let ok = tryOnce()
+    while (!ok && enabled && attempts <= max) {
+      ok = tryOnce()
+    }
+    this.inboxes.unshift({ subscriptionId: s.id, message: msg, deliveredAt: now })
+    rec.status = ok ? 'SUCCESS' : 'FAILED'
     rec.distributedTime = now
+    rec.detail = `attempts=${attempts}`
     msg.status = 'DISTRIBUTED'
   },
   seedPetroScenario() {
@@ -133,15 +147,15 @@ export const store = reactive({
     this.addTopic('hse_topic', '安全环保事件')
     this.addTopic('maintenance_topic', '设备维保事件')
     this.addTopic('trading_topic', '贸易合约事件')
-    const exists = (name: string) => this.consumers.some(c => c.serviceName === name)
-    if (!exists('logistics_control_service')) this.registerConsumer({ serviceName: 'logistics_control_service', consumerGroup: 'realtime_logistics', topics: ['logistics_topic'], callbackUrl: 'http://logistics/api/callback', consumerType: 'REALTIME' })
-    if (!exists('warehouse_service')) this.registerConsumer({ serviceName: 'warehouse_service', consumerGroup: 'daily_settlement', topics: ['inventory_topic'], callbackUrl: 'http://warehouse/api/inventory', consumerType: 'DAILY_DEDUP', scheduleTime: '23:00:00' })
-    if (!exists('procurement_service')) this.registerConsumer({ serviceName: 'procurement_service', consumerGroup: 'realtime_procurement', topics: ['purchase_topic'], callbackUrl: 'http://procurement/api/events', consumerType: 'REALTIME' })
-    if (!exists('refinery_ops_service')) this.registerConsumer({ serviceName: 'refinery_ops_service', consumerGroup: 'daily_refinery', topics: ['refinery_topic'], callbackUrl: 'http://refinery/api/daily', consumerType: 'DAILY_BATCH', scheduleTime: '23:30:00' })
-    if (!exists('finance_settlement_service')) this.registerConsumer({ serviceName: 'finance_settlement_service', consumerGroup: 'daily_finance', topics: ['finance_topic'], callbackUrl: 'http://finance/api/settlement', consumerType: 'DAILY_BATCH', scheduleTime: '00:10:00' })
-    if (!exists('hse_alert_service')) this.registerConsumer({ serviceName: 'hse_alert_service', consumerGroup: 'realtime_hse', topics: ['hse_topic'], callbackUrl: 'http://hse/api/alerts', consumerType: 'REALTIME' })
-    if (!exists('maintenance_service')) this.registerConsumer({ serviceName: 'maintenance_service', consumerGroup: 'realtime_maintenance', topics: ['maintenance_topic'], callbackUrl: 'http://maintenance/api/workorders', consumerType: 'REALTIME' })
-    if (!exists('trading_marketing_service')) this.registerConsumer({ serviceName: 'trading_marketing_service', consumerGroup: 'daily_trading', topics: ['trading_topic'], callbackUrl: 'http://trading/api/contracts', consumerType: 'DAILY_BATCH', scheduleTime: '22:00:00' })
+    const exists = (name: string, topic: string) => this.subscriptions.some(s => s.serviceName === name && s.topic === topic)
+    if (!exists('logistics_control_service','logistics_topic')) this.registerSubscription({ serviceName: 'logistics_control_service', consumerGroup: 'realtime_logistics', topic: 'logistics_topic', callbackUrl: 'http://logistics/api/callback', consumerType: 'REALTIME' })
+    if (!exists('warehouse_service','inventory_topic')) this.registerSubscription({ serviceName: 'warehouse_service', consumerGroup: 'daily_settlement', topic: 'inventory_topic', callbackUrl: 'http://warehouse/api/inventory', consumerType: 'DAILY_DEDUP', scheduleTime: '23:00:00' })
+    if (!exists('procurement_service','purchase_topic')) this.registerSubscription({ serviceName: 'procurement_service', consumerGroup: 'realtime_procurement', topic: 'purchase_topic', callbackUrl: 'http://procurement/api/events', consumerType: 'REALTIME' })
+    if (!exists('refinery_ops_service','refinery_topic')) this.registerSubscription({ serviceName: 'refinery_ops_service', consumerGroup: 'daily_refinery', topic: 'refinery_topic', callbackUrl: 'http://refinery/api/daily', consumerType: 'DAILY_BATCH', scheduleTime: '23:30:00' })
+    if (!exists('finance_settlement_service','finance_topic')) this.registerSubscription({ serviceName: 'finance_settlement_service', consumerGroup: 'daily_finance', topic: 'finance_topic', callbackUrl: 'http://finance/api/settlement', consumerType: 'DAILY_BATCH', scheduleTime: '00:10:00' })
+    if (!exists('hse_alert_service','hse_topic')) this.registerSubscription({ serviceName: 'hse_alert_service', consumerGroup: 'realtime_hse', topic: 'hse_topic', callbackUrl: 'http://hse/api/alerts', consumerType: 'REALTIME' })
+    if (!exists('maintenance_service','maintenance_topic')) this.registerSubscription({ serviceName: 'maintenance_service', consumerGroup: 'realtime_maintenance', topic: 'maintenance_topic', callbackUrl: 'http://maintenance/api/workorders', consumerType: 'REALTIME' })
+    if (!exists('trading_marketing_service','trading_topic')) this.registerSubscription({ serviceName: 'trading_marketing_service', consumerGroup: 'daily_trading', topic: 'trading_topic', callbackUrl: 'http://trading/api/contracts', consumerType: 'DAILY_BATCH', scheduleTime: '22:00:00' })
   },
   publishPetroSampleMessages() {
     const now = new Date()

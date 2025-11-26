@@ -6,7 +6,7 @@
         <a href="#/monitor">监控总览</a>
         <a href="#/topics">Topic定义</a>
         <a href="#/publish">事件发布</a>
-        <a href="#/consumers">监听注册</a>
+        <a href="#/consumers">事件订阅</a>
         <a href="#/daily">每日结算</a>
         <a href="#/live">实时监听</a>
         <a href="#/logs">分发记录</a>
